@@ -106,7 +106,12 @@ export default function App() {
   };
 
   const [session, setSession] = useState(null);
-  useEffect(() => { if (activeTab === "today") setSession(getLogForDate(today) || null); }, [selectedDay, activeTab, state.logs.length]);
+  useEffect(() => {
+    if (activeTab !== "today") return;
+    const log = getLogForDate(today) || null;
+    setSession(log);
+    if (log?.noGym !== undefined) setNoGym(log.noGym);
+  }, [selectedDay, activeTab, state.logs.length]);
 
   const addSet = (exIdx) => {
     if (!session) return;
@@ -134,7 +139,7 @@ export default function App() {
     });
     setSession(next);
   };
-  const saveSession = () => { if (!session) return; upsertLog({ ...session, updatedAt: new Date().toISOString() }); };
+  const saveSession = () => { if (!session) return; upsertLog({ ...session, noGym, updatedAt: new Date().toISOString() }); };
   const startSession = () => { const s = startTodayIfEmpty(); setSession(s); };
 
   const fmtSec = (s) => `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
@@ -218,6 +223,15 @@ export default function App() {
     return map;
   }, [state.plan]);
 
+  const sessionStats = useMemo(() => {
+    if (!session) return { completedSets: 0, totalSets: 0, completedExercises: 0, totalExercises: 0 };
+    const totalExercises = session.exercises.length;
+    const totalSets = session.exercises.reduce((sum, ex) => sum + ex.sets.length, 0);
+    const completedSets = session.exercises.reduce((sum, ex) => sum + ex.sets.filter((s) => s.done).length, 0);
+    const completedExercises = session.exercises.filter((ex) => ex.sets.length > 0 && ex.sets.every((s) => s.done)).length;
+    return { completedSets, totalSets, completedExercises, totalExercises };
+  }, [session]);
+
   return (
     <div className="min-h-screen bg-neutral-50 text-neutral-900">
       <header className="sticky top-0 z-10 bg-white/80 backdrop-blur border-b border-neutral-200">
@@ -294,7 +308,19 @@ export default function App() {
                   <div className="text-lg font-semibold">{selectedDay} · {state.plan[selectedDay]?.name || "루틴 없음"}</div>
                 </div>
                 <div className="flex items-center gap-2">
-                  <label className="flex items-center gap-1 text-sm border rounded-lg px-2 py-1"><LaptopMinimal className="w-4 h-4"/>헬스장 불가<input type="checkbox" className="ml-1" checked={noGym} onChange={(e)=>setNoGym(e.target.checked)}/></label>
+                  <label className="flex items-center gap-1 text-sm border rounded-lg px-2 py-1">
+                    <LaptopMinimal className="w-4 h-4"/>헬스장 불가
+                    <input
+                      type="checkbox"
+                      className="ml-1"
+                      checked={noGym}
+                      onChange={(e)=> {
+                        const next = e.target.checked;
+                        setNoGym(next);
+                        if (session) setSession({ ...session, noGym: next });
+                      }}
+                    />
+                  </label>
                 </div>
               </div>
 
@@ -304,7 +330,7 @@ export default function App() {
                 <button className="px-3 py-1.5 rounded-xl bg-neutral-100 border text-sm flex items-center gap-1" onClick={saveSession}><Save className="w-4 h-4"/>저장</button>
               </div>
 
-              {!session and (
+              {!session && (
                 <div className="mt-6 text-sm text-neutral-600 flex items-start gap-2">
                   <HelpCircle className="w-4 h-4 mt-0.5"/>
                   <p>"오늘 시작"을 누르면 {selectedDay} 루틴이 생성됩니다. 헬스장을 사용할 수 없으면 퀵루틴으로 대체하세요.</p>
@@ -313,6 +339,20 @@ export default function App() {
 
               {session && (
                 <div className="mt-4 space-y-6">
+                  <div className="grid md:grid-cols-3 gap-3">
+                    <div className="border rounded-2xl p-3">
+                      <div className="text-xs text-neutral-500">운동 진행</div>
+                      <div className="text-lg font-semibold">{sessionStats.completedExercises}/{sessionStats.totalExercises} 종목</div>
+                    </div>
+                    <div className="border rounded-2xl p-3">
+                      <div className="text-xs text-neutral-500">세트 완료</div>
+                      <div className="text-lg font-semibold">{sessionStats.completedSets}/{sessionStats.totalSets} 세트</div>
+                    </div>
+                    <div className="border rounded-2xl p-3">
+                      <div className="text-xs text-neutral-500">모드</div>
+                      <div className="text-lg font-semibold">{session.noGym ? "홈트/대체" : "헬스장"}</div>
+                    </div>
+                  </div>
                   {session.exercises.map((ex, exIdx) => (
                     <div key={exIdx} className="border rounded-2xl p-3">
                       <div className="flex items-center justify-between">
@@ -409,7 +449,10 @@ export default function App() {
                 {state.logs.slice().sort((a,b)=> b.date.localeCompare(a.date)).map((log) => (
                   <div key={log.date} className="border rounded-2xl p-3">
                     <div className="flex items-center justify-between">
-                      <div className="font-semibold">{log.date} · {log.dayName}</div>
+                      <div className="font-semibold">
+                        {log.date} · {log.dayName}
+                        {log.noGym && <span className="ml-2 text-xs px-2 py-0.5 rounded-full bg-neutral-100 border">헬스장 불가</span>}
+                      </div>
                       <div className="text-xs text-neutral-500">{log.updatedAt?"수정됨":""}</div>
                     </div>
                     <ul className="mt-2 space-y-1 text-sm">
